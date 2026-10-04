@@ -1,0 +1,74 @@
+#!/bin/sh
+# seoloop - SEO checks from your terminal. https://github.com/mehranshahmiri/seoloop
+# Thin client for the SEO Loop API; override the server with SEOLOOP_URL.
+set -eu
+BASE="${SEOLOOP_URL:-https://seoloop.in}"
+VERSION="1.0.0"
+
+usage() {
+  cat <<USAGE
+seoloop $VERSION - SEO checks from your terminal
+
+Usage: seoloop <command> <domain-or-url> [options]
+
+Commands:
+  audit      full SEO audit with score and grade
+  status     HTTP status after redirects
+  title      page title
+  meta       title, description, canonical, Open Graph, headings
+  headers    final response headers
+  redirects  redirect chain
+  ttfb       time to first byte
+  ssl        TLS certificate and expiry
+  robots     robots.txt analysis
+  sitemap    sitemap discovery and URL count
+  ip         your public IP
+
+Options:
+  --json         machine-readable JSON output
+  --field NAME   print a single field (e.g. seoloop ssl example.com --field days_left)
+  --min N        (audit) exit non-zero if score < N, for CI
+  --no-color     disable colour (colour is on when stdout is a terminal)
+  -h, --help     show this help
+
+Environment: SEOLOOP_URL (default https://seoloop.in)
+USAGE
+}
+
+[ $# -ge 1 ] || { usage; exit 2; }
+case "$1" in -h|--help|help) usage; exit 0 ;; -v|--version|version) echo "seoloop $VERSION"; exit 0 ;; esac
+
+cmd="$1"; shift
+target=""; query=""; color=1
+[ -t 1 ] || color=0
+add() { query="${query:+$query&}$1"; }
+
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --json) add "json=1" ;;
+    --field) shift; [ $# -gt 0 ] || { echo "seoloop: --field needs a name" >&2; exit 2; }; add "field=$1" ;;
+    --min) shift; [ $# -gt 0 ] || { echo "seoloop: --min needs a number" >&2; exit 2; }; add "min=$1" ;;
+    --no-color) color=0 ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "seoloop: unknown option $1" >&2; exit 2 ;;
+    *) target="$1" ;;
+  esac
+  shift
+done
+
+if [ "$cmd" = "ip" ]; then path="ip"; else
+  [ -n "$target" ] || { echo "seoloop: $cmd needs a domain or URL, e.g. seoloop $cmd example.com" >&2; exit 2; }
+  path="$cmd/$target"
+fi
+[ "$color" = 1 ] && [ "$cmd" = "audit" ] && add "color=1"
+
+url="$BASE/$path${query:+?$query}"
+out="$(mktemp)"; trap 'rm -f "$out"' EXIT
+code="$(curl -sS -m 40 -A "seoloop-cli/$VERSION" -o "$out" -w '%{http_code}' "$url")" || { echo "seoloop: could not reach $BASE" >&2; exit 1; }
+cat "$out"
+case "$code" in
+  2??) exit 0 ;;
+  412) exit 3 ;;   # audit score below --min
+  429) echo "seoloop: rate limited, try again in a minute" >&2; exit 4 ;;
+  *) exit 1 ;;
+esac
