@@ -13,6 +13,7 @@
   <a href="https://seoloop.in"><b>seoloop.in</b></a> &nbsp;·&nbsp;
   <a href="#install">Install</a> &nbsp;·&nbsp;
   <a href="#endpoints">Endpoints</a> &nbsp;·&nbsp;
+  <a href="https://seoloop.in/docs">Docs</a> &nbsp;·&nbsp;
   <a href="#self-host">Self-host</a> &nbsp;·&nbsp;
   <a href="CONTRIBUTING.md">Contribute</a>
 </p>
@@ -70,6 +71,8 @@ $ seoloop --help
 $ seoloop ssl example.com --field days_left
 $ seoloop audit example.com --json
 $ seoloop audit example.com --min 80 || echo "SEO score too low"
+$ seoloop audit example.com --diff        # what changed since your last run
+$ seoloop compare example.com openloop.in
 ```
 
 ## Endpoints
@@ -77,6 +80,7 @@ $ seoloop audit example.com --min 80 || echo "SEO score too low"
 | Endpoint | Returns |
 |---|---|
 | `/audit/<target>` | 26 checks in 4 categories, a 0-100 score and a grade |
+| `/compare/<a>?vs=<b>` | two sites audited side by side, with the checks one passes and the other fails |
 | `/indexable/<target>` | can search engines index this URL? yes/no with reasons (noindex, robots.txt, canonical, status) |
 | `/links/<target>` | broken-link check for the first 30 links on a page |
 | `/schema/<target>` | JSON-LD types found and missing required properties |
@@ -106,7 +110,19 @@ $ seoloop audit example.com --min 80 || echo "SEO score too low"
 
 Rate limits are enforced per IP by nginx (see `deploy/nginx-limits.conf`). Results are cached for 5 to 10 minutes.
 
+### MCP server
+
+AI agents can run every check themselves through a hosted, stateless MCP server (Streamable HTTP):
+
+```sh
+claude mcp add --transport http seoloop https://seoloop.in/mcp
+```
+
+Most other MCP clients that support remote servers just need the URL `https://seoloop.in/mcp`. All tools are read-only: `audit`, `compare`, `indexable`, `links`, `schema`, `status`, `title`, `meta`, `headers`, `redirects`, `ttfb`, `ssl`, `robots`, `sitemap`. Self-hosting? The same endpoint is served by your instance at `/mcp`.
+
 ### API docs
+
+Full reference: **[seoloop.in/docs](https://seoloop.in/docs)**.
 
 [`/openapi.json`](https://seoloop.in/openapi.json) is an OpenAPI 3 spec, and [`/llms.txt`](https://seoloop.in/llms.txt) describes the API for AI agents.
 
@@ -177,9 +193,12 @@ To add an endpoint, write a static method on `SeoLoop\Handlers` returning `['tex
 ```
 public/index.php    router, caching, output formats
 public/landing.html the page browsers see at /
+public/docs.html    the /docs reference page
 src/Fetcher.php     SSRF-hardened HTTP client + TLS peek
 src/Handlers.php    one method per endpoint
 src/Audit.php       the audit engine
+src/Runner.php      file cache around the handlers
+src/Mcp.php         MCP server (JSON-RPC over HTTP)
 src/Page.php        HTML parsing helpers
 bin/seoloop         the CLI
 install.sh          CLI installer

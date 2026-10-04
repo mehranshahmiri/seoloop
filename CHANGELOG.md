@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.2.0
+- New endpoint: `/compare/<a>?vs=<b>`
+- MCP server at `/mcp` (Streamable HTTP, stateless): every endpoint is a tool
+- CLI: `seoloop compare a.com b.com`, `seoloop audit x --diff` (what changed since the last run)
+- `/docs` reference page; homepage covers compare, MCP, GitHub Action and `--diff`
+- Shared stylesheet; `Runner` cache layer shared by the HTTP router and MCP
+- Self-hosters: add the `seomcp` zone from `deploy/nginx-limits.conf` and the `/mcp` + `/compare/` locations from `deploy/nginx-site.conf`
+
 ## 1.1.1
 - Fix: `/schema` text output no longer runs long type names into the status
 

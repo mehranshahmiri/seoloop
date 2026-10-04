@@ -9,8 +9,11 @@ namespace SeoLoop;
  */
 final class Handlers
 {
+    public const VERSION = '1.2.0';
+
     public const ENDPOINTS = [
         'audit'     => 'Full SEO audit with score and grade',
+        'compare'   => 'Audit two sites side by side (use ?vs=other.com)',
         'indexable' => 'Can search engines index this URL? Yes/no with reasons',
         'links'     => 'Broken-link check for the links on one page',
         'schema'    => 'JSON-LD structured data: types found and missing properties',
@@ -383,6 +386,59 @@ final class Handlers
         return ['text' => implode("\n", $lines), 'data' => [
             'final_url' => $r['final_url'], 'blocks' => count($blocks), 'invalid_blocks' => $bad,
             'types' => array_values(array_unique(array_column($items, 'type'))), 'items' => $items,
+        ]];
+    }
+
+    /**
+     * Checks whose pass/fail state differs between two audits (matched by check id).
+     *
+     * @return array[] each: id, label, category, importance, a (bool), b (bool)
+     */
+    public static function diffChecks(array $a, array $b): array
+    {
+        $bById = [];
+        foreach ($b as $c) {
+            $bById[$c['id']] = $c;
+        }
+        $out = [];
+        foreach ($a as $c) {
+            if (isset($bById[$c['id']]) && $bById[$c['id']]['passed'] !== $c['passed']) {
+                $out[] = ['id' => $c['id'], 'label' => $c['label'], 'category' => $c['category'], 'importance' => $c['importance'], 'a' => $c['passed'], 'b' => $bById[$c['id']]['passed']];
+            }
+        }
+        return $out;
+    }
+
+    public static function compare(string $a, string $b): array
+    {
+        $ra = Runner::run('audit', $a)['data'];
+        $rb = Runner::run('audit', $b)['data'];
+        $ha = parse_url($ra['url'], PHP_URL_HOST);
+        $hb = parse_url($rb['url'], PHP_URL_HOST);
+        $diff = self::diffChecks($ra['checks'], $rb['checks']);
+        $w = max(strlen($ha), strlen($hb), 12);
+        $row = fn(string $l, string $x, string $y) => sprintf("%-14s %-{$w}s %s", $l, $x, $y);
+        $lines = [$row('', $ha, $hb), $row('score', "{$ra['score']} ({$ra['grade']})", "{$rb['score']} ({$rb['grade']})")];
+        foreach ($ra['categories'] as $cat => $score) {
+            $lines[] = $row($cat, (string) $score, (string) ($rb['categories'][$cat] ?? '-'));
+        }
+        foreach ([[$ha, 'a'], [$hb, 'b']] as [$host, $side]) {
+            $only = array_filter($diff, fn($d) => $d[$side] === true);
+            if ($only) {
+                $lines[] = '';
+                $lines[] = "Only {$host} passes:";
+                foreach ($only as $d) {
+                    $lines[] = "  [{$d['importance']}] {$d['label']}";
+                }
+            }
+        }
+        $gap = $ra['score'] - $rb['score'];
+        $lines[] = '';
+        $lines[] = $gap === 0 ? 'Tie.' : sprintf('%s leads by %d point%s.', $gap > 0 ? $ha : $hb, abs($gap), abs($gap) === 1 ? '' : 's');
+        return ['text' => implode("\n", $lines), 'data' => [
+            'a' => ['url' => $ra['url'], 'score' => $ra['score'], 'grade' => $ra['grade'], 'categories' => $ra['categories']],
+            'b' => ['url' => $rb['url'], 'score' => $rb['score'], 'grade' => $rb['grade'], 'categories' => $rb['categories']],
+            'score_gap' => $gap, 'leader' => $gap === 0 ? null : ($gap > 0 ? $ha : $hb), 'differences' => $diff,
         ]];
     }
 

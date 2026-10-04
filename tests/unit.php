@@ -5,10 +5,13 @@ require __DIR__ . '/../src/Fetcher.php';
 require __DIR__ . '/../src/Page.php';
 require __DIR__ . '/../src/Handlers.php';
 require __DIR__ . '/../src/Audit.php';
+require __DIR__ . '/../src/Runner.php';
+require __DIR__ . '/../src/Mcp.php';
 
 use SeoLoop\Audit;
 use SeoLoop\Fetcher;
 use SeoLoop\Handlers;
+use SeoLoop\Mcp;
 use SeoLoop\Page;
 
 $fail = 0;
@@ -70,6 +73,26 @@ check('skip check id', Audit::present($raw, ['skip' => ['b']])['data']['score'],
 check('csv header', explode("\n", Audit::present($raw, ['format' => 'csv'])['text'])[0], 'category,id,importance,passed,label,detail');
 check('md escapes pipe', str_contains(Audit::present($raw, ['format' => 'md'])['text'], 'x\|y'), true);
 check('grades', [Audit::grade(95), Audit::grade(85), Audit::grade(75), Audit::grade(65), Audit::grade(10)], ['A', 'B', 'C', 'D', 'F']);
+
+// Handlers::diffChecks (used by /compare)
+$ca = [['id' => 'a', 'label' => 'A', 'category' => 'seo', 'importance' => 'high', 'passed' => true], ['id' => 'b', 'label' => 'B', 'category' => 'seo', 'importance' => 'low', 'passed' => true]];
+$cb = [['id' => 'a', 'label' => 'A', 'category' => 'seo', 'importance' => 'high', 'passed' => false], ['id' => 'b', 'label' => 'B', 'category' => 'seo', 'importance' => 'low', 'passed' => true]];
+$d = Handlers::diffChecks($ca, $cb);
+check('diff only differing checks', array_column($d, 'id'), ['a']);
+check('diff direction', [$d[0]['a'], $d[0]['b']], [true, false]);
+
+// MCP
+$init = Mcp::handle(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '2025-03-26']]);
+check('mcp initialize echoes supported version', $init['result']['protocolVersion'], '2025-03-26');
+check('mcp initialize unknown version falls back', Mcp::handle(['jsonrpc' => '2.0', 'id' => 1, 'method' => 'initialize', 'params' => ['protocolVersion' => '1999-01-01']])['result']['protocolVersion'], '2025-06-18');
+check('mcp notification has no response', Mcp::handle(['jsonrpc' => '2.0', 'method' => 'notifications/initialized']), null);
+$tools = Mcp::handle(['jsonrpc' => '2.0', 'id' => 2, 'method' => 'tools/list'])['result']['tools'];
+check('mcp lists every endpoint', array_column($tools, 'name'), array_keys(Handlers::ENDPOINTS));
+check('mcp compare requires vs', array_values(array_filter($tools, fn($t) => $t['name'] === 'compare'))[0]['inputSchema']['required'], ['target', 'vs']);
+check('mcp unknown method', Mcp::handle(['jsonrpc' => '2.0', 'id' => 3, 'method' => 'nope'])['error']['code'], -32601);
+check('mcp invalid request', Mcp::handle(['foo' => 1])['error']['code'], -32600);
+check('mcp missing target is a tool error', Mcp::handle(['jsonrpc' => '2.0', 'id' => 4, 'method' => 'tools/call', 'params' => ['name' => 'audit', 'arguments' => []]])['result']['isError'], true);
+check('mcp blocked target is a tool error', Mcp::handle(['jsonrpc' => '2.0', 'id' => 5, 'method' => 'tools/call', 'params' => ['name' => 'status', 'arguments' => ['target' => '127.0.0.1']]])['result']['isError'], true);
 
 echo $fail ? "FAILED ($fail)\n" : "ok - all unit tests passed\n";
 exit($fail ? 1 : 0);

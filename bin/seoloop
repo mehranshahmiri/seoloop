@@ -3,7 +3,7 @@
 # Thin client for the SEO Loop API; override the server with SEOLOOP_URL.
 set -eu
 BASE="${SEOLOOP_URL:-https://seoloop.in}"
-VERSION="1.1.0"
+VERSION="1.2.0"
 
 usage() {
   cat <<USAGE
@@ -13,6 +13,7 @@ Usage: seoloop <command> <domain-or-url> [options]
 
 Commands:
   audit      full SEO audit with score and grade
+  compare    audit two sites side by side: seoloop compare a.com b.com
   indexable  can search engines index this URL? yes/no with reasons
   links      broken-link check for the links on one page
   schema     JSON-LD structured data: types and missing properties
@@ -34,6 +35,7 @@ Options:
   --only LIST    (audit) only these categories/check ids, e.g. seo,security
   --skip LIST    (audit) leave out categories/check ids, e.g. sitemap,hsts
   --format F     (audit) text (default), csv or md
+  --diff         (audit) show what changed since your last run of this target
   --no-color     disable colour (colour is on when stdout is a terminal)
   -h, --help     show this help
 
@@ -45,7 +47,7 @@ USAGE
 case "$1" in -h|--help|help) usage; exit 0 ;; -v|--version|version) echo "seoloop $VERSION"; exit 0 ;; esac
 
 cmd="$1"; shift
-target=""; query=""; color=1
+target=""; target2=""; query=""; color=1; diff=0
 [ -t 1 ] || color=0
 add() { query="${query:+$query&}$1"; }
 
@@ -57,10 +59,11 @@ while [ $# -gt 0 ]; do
     --only) shift; [ $# -gt 0 ] || { echo "seoloop: --only needs a list" >&2; exit 2; }; add "only=$1" ;;
     --skip) shift; [ $# -gt 0 ] || { echo "seoloop: --skip needs a list" >&2; exit 2; }; add "skip=$1" ;;
     --format) shift; [ $# -gt 0 ] || { echo "seoloop: --format needs text, csv or md" >&2; exit 2; }; add "format=$1" ;;
+    --diff) diff=1 ;;
     --no-color) color=0 ;;
     -h|--help) usage; exit 0 ;;
     -*) echo "seoloop: unknown option $1" >&2; exit 2 ;;
-    *) target="$1" ;;
+    *) if [ -z "$target" ]; then target="$1"; else target2="$1"; fi ;;
   esac
   shift
 done
@@ -69,12 +72,40 @@ if [ "$cmd" = "ip" ]; then path="ip"; else
   [ -n "$target" ] || { echo "seoloop: $cmd needs a domain or URL, e.g. seoloop $cmd example.com" >&2; exit 2; }
   path="$cmd/$target"
 fi
-[ "$color" = 1 ] && [ "$cmd" = "audit" ] && add "color=1"
+if [ "$cmd" = "compare" ]; then
+  [ -n "$target2" ] || { echo "seoloop: compare needs two sites, e.g. seoloop compare a.com b.com" >&2; exit 2; }
+  add "vs=$target2"
+fi
+[ "$diff" = 1 ] && [ "$cmd" != "audit" ] && { echo "seoloop: --diff only works with audit" >&2; exit 2; }
+[ "$color" = 1 ] && [ "$cmd" = "audit" ] && [ "$diff" = 0 ] && add "color=1"
 
 url="$BASE/$path${query:+?$query}"
 out="$(mktemp)"; trap 'rm -f "$out"' EXIT
 code="$(curl -sS -m 40 -A "seoloop-cli/$VERSION" -o "$out" -w '%{http_code}' "$url")" || { echo "seoloop: could not reach $BASE" >&2; exit 1; }
-cat "$out"
+if [ "$diff" = 1 ] && [ "${code#2}" != "$code" ]; then
+  # Reduce the report to "STATUS<TAB>label" lines plus "#score<TAB>N", and compare with the previous run.
+  state_dir="${XDG_CACHE_HOME:-$HOME/.cache}/seoloop"; mkdir -p "$state_dir"
+  state="$state_dir/$(printf '%s' "$target" | cksum | cut -d' ' -f1).txt"
+  now="$out.now"
+  awk '/^ +(PASS|FAIL) /{ st=$1; sub(/^ +(PASS|FAIL) +/,""); sub(/^\[[a-z]+\] +/,""); sub(/ - .*$/,""); print st "\t" $0 }
+       /^Score:/{ sc=$2; sub(/\/.*/,"",sc); print "#score\t" sc }' "$out" > "$now"
+  if [ "$color" = 1 ]; then sed 's/PASS/\033[32mPASS\033[0m/; s/FAIL/\033[31mFAIL\033[0m/' "$out"; else cat "$out"; fi
+  if [ -f "$state" ]; then
+    awk -F'\t' '
+      NR==FNR { if ($1=="#score") oldscore=$2; else old[$2]=$1; next }
+      $1=="#score" { newscore=$2; next }
+      ($2 in old) && old[$2]!=$1 { if ($1=="PASS") fixed=fixed "\n    fixed:   " $2; else broke=broke "\n    broken:  " $2 }
+      !($2 in old) { added=added "\n    new:     " $1 " " $2 }
+      END { d=newscore-oldscore; printf "\n  Since last run: score %s -> %s", oldscore, newscore
+            if (d>0) printf " (+%d)", d; else if (d<0) printf " (%d)", d; else printf " (no change)"
+            print fixed broke added }' "$state" "$now"
+  else
+    printf '\n  (first run saved - run again with --diff to see changes)\n'
+  fi
+  cp "$now" "$state"; rm -f "$now"
+else
+  cat "$out"
+fi
 case "$code" in
   2??) exit 0 ;;
   412) exit 3 ;;   # audit score below --min

@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Docs — SEO Loop</title>
+<meta name="description" content="SEO Loop documentation: endpoints, parameters, CLI, GitHub Action, MCP server and self-hosting.">
+<link rel="canonical" href="https://seoloop.in/docs">
+<meta property="og:title" content="Docs — SEO Loop">
+<meta property="og:description" content="Free, open-source SEO audits from the command line. No signup, no API key.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://seoloop.in/docs">
+<meta property="og:image" content="https://seoloop.in/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="/favicon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/site.css">
+<style>
+.doc{display:grid;grid-template-columns:210px 1fr;gap:48px;padding:48px 0 80px}
+.toc{position:sticky;top:84px;align-self:start;font-size:14px}
+.toc a{display:block;padding:5px 0;color:var(--muted)}.toc a:hover{color:var(--brand)}
+.doc h1{font-size:40px;margin-bottom:8px}.doc h2{font-size:26px;margin:52px 0 14px;padding-top:8px}.doc h3{font-size:17px;margin:26px 0 8px}
+.doc p,.doc li{color:var(--fg);font-size:15.5px;margin:10px 0}.doc ul{padding-left:22px}
+.doc code{font-family:'JetBrains Mono',monospace;font-size:.88em;background:var(--soft);border:1px solid var(--line);border-radius:5px;padding:1px 5px}
+.doc pre{background:#111;color:#d4d4d4;border-radius:12px;padding:16px 20px;overflow-x:auto;font-size:13px;line-height:1.7;margin:14px 0}
+.doc pre code{background:none;border:0;padding:0;color:inherit}
+.doc table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14px}
+.doc th,.doc td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.doc th{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.tw{overflow-x:auto}
+@media(max-width:820px){.doc{grid-template-columns:1fr}.toc{display:none}}
+</style>
+</head>
+<body>
+<nav><div class="wrap">
+  <a class="logo" href="/"><img src="/logo.png" alt="SEO Loop" width="147" height="46"></a>
+  <div class="links"><a href="/#commands">Commands</a><a href="/#install">Install</a><a href="/#ci">CI &amp; AI</a><a href="/docs">Docs</a><a class="gh" href="https://github.com/mehranshahmiri/seoloop">GitHub</a></div>
+</div></nav><div class="wrap"><div class="doc">
+<aside class="toc"><b style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">Docs</b>
+<a href="#quickstart">Quick start</a><a href="#targets">Targets</a><a href="#endpoints">Endpoints</a><a href="#output">Output options</a><a href="#audit">The audit</a><a href="#cli">CLI</a><a href="#action">GitHub Action</a><a href="#mcp">MCP server</a><a href="#limits">Limits &amp; errors</a><a href="#selfhost">Self-hosting</a><a href="#security">Security model</a></aside>
+<main>
+<h1>Documentation</h1>
+<p>SEO Loop answers SEO questions about any public URL, over plain HTTP. No signup, no API key.</p>
+
+<h2 id="quickstart">Quick start</h2>
+<pre><code>curl seoloop.in/audit/example.com
+curl -fsSL https://seoloop.in/install | sh   # optional CLI
+seoloop audit example.com</code></pre>
+
+<h2 id="targets">Targets</h2>
+<p>A target is a domain or URL: <code>example.com</code>, <code>https://example.com/pricing</code>. If you leave out the scheme, <code>https://</code> is assumed. Only <code>http</code> and <code>https</code> on ports 80 and 443 are allowed, and the host must resolve to a public address. Anything else is refused with HTTP 422.</p>
+
+<h2 id="endpoints">Endpoints</h2>
+<p>Every endpoint is <code>GET /&lt;endpoint&gt;/&lt;target&gt;</code>. The answer is short plain text by default.</p>
+<div class="tw"><table>
+<tr><th>Endpoint</th><th>Returns</th></tr>
+<tr><td><code>/audit/&lt;target&gt;</code></td><td>26 checks in 4 categories, a 0-100 score and a grade. See <a href="#audit" style="color:var(--brand)">The audit</a>.</td></tr>
+<tr><td><code>/compare/&lt;a&gt;?vs=&lt;b&gt;</code></td><td>Both sites audited side by side, with the checks one passes and the other fails, and the score gap.</td></tr>
+<tr><td><code>/indexable/&lt;target&gt;</code></td><td><code>indexable: yes</code> or <code>NO</code> with reasons: HTTP status, X-Robots-Tag and meta noindex, robots.txt rules (longest match wins, wildcards, <code>$</code>), canonical pointing elsewhere.</td></tr>
+<tr><td><code>/links/&lt;target&gt;</code></td><td>Checks the first 30 unique links on the page (internal first) and lists broken ones. HEAD requests with a GET fallback.</td></tr>
+<tr><td><code>/schema/&lt;target&gt;</code></td><td>JSON-LD blocks, the types found, and required properties that are missing for common types.</td></tr>
+<tr><td><code>/status/&lt;target&gt;</code></td><td>HTTP status after redirects.</td></tr>
+<tr><td><code>/title/&lt;target&gt;</code></td><td>The page title.</td></tr>
+<tr><td><code>/meta/&lt;target&gt;</code></td><td>Title, description, canonical, robots, viewport, language, Open Graph, headings, image alt gaps, word count.</td></tr>
+<tr><td><code>/headers/&lt;target&gt;</code></td><td>Final response headers.</td></tr>
+<tr><td><code>/redirects/&lt;target&gt;</code></td><td>Every hop from the URL you gave to the page you land on.</td></tr>
+<tr><td><code>/ttfb/&lt;target&gt;</code></td><td>Time to first byte, with DNS, connect and TLS timings.</td></tr>
+<tr><td><code>/ssl/&lt;target&gt;</code></td><td>Certificate subject, issuer, validity, days left, trust, protocol and cipher.</td></tr>
+<tr><td><code>/robots/&lt;target&gt;</code></td><td>robots.txt for the site, parsed: sitemaps, rule count, whether everything is blocked.</td></tr>
+<tr><td><code>/sitemap/&lt;target&gt;</code></td><td>Finds the sitemap (robots.txt first, then <code>/sitemap.xml</code>) and counts entries.</td></tr>
+<tr><td><code>/ip</code>, <code>/ua</code></td><td>Your IP address and user agent.</td></tr>
+</table></div>
+
+<h2 id="output">Output options</h2>
+<div class="tw"><table>
+<tr><th>Option</th><th>Effect</th></tr>
+<tr><td><code>?json</code> &middot; <code>Accept: application/json</code> &middot; <code>/v1/&lt;endpoint&gt;/&lt;target&gt;</code></td><td>Full JSON instead of text.</td></tr>
+<tr><td><code>?field=days_left</code></td><td>Just one top-level scalar value from the JSON, as text.</td></tr>
+<tr><td><code>?min=80</code> (audit)</td><td>HTTP 412 if the score is below 80. With <code>curl -f</code> that fails a script or build.</td></tr>
+<tr><td><code>?only=seo,security</code> &middot; <code>?skip=hsts,sitemap</code> (audit)</td><td>Include or exclude categories or check ids. The score is recomputed.</td></tr>
+<tr><td><code>?format=csv|md</code> (audit)</td><td>CSV rows, or Markdown for PR comments and job summaries.</td></tr>
+<tr><td><code>?color</code> (audit)</td><td>ANSI colours for PASS and FAIL.</td></tr>
+</table></div>
+<p>Audits return an <code>X-SeoLoop-Score</code> header. Machine-readable descriptions: <a href="/openapi.json" style="color:var(--brand)">/openapi.json</a> and <a href="/llms.txt" style="color:var(--brand)">/llms.txt</a>.</p>
+
+<h2 id="audit">The audit</h2>
+<p>Each check is weighted by importance (high 10, medium 5, low 2). The score is the weighted share of checks that pass; grades are A 90+, B 80+, C 70+, D 60+, otherwise F.</p>
+<div class="tw"><table>
+<tr><th>Category</th><th>Check id</th><th>Importance</th><th>What it checks</th></tr>
+<tr><td>seo</td><td><code>title</code></td><td>high</td><td>Title tag present</td></tr><tr><td>seo</td><td><code>title_length</code></td><td>medium</td><td>Title 10-60 characters</td></tr><tr><td>seo</td><td><code>description</code></td><td>high</td><td>Meta description present</td></tr><tr><td>seo</td><td><code>description_length</code></td><td>medium</td><td>Description 50-160 characters</td></tr><tr><td>seo</td><td><code>h1</code></td><td>medium</td><td>Exactly one H1</td></tr><tr><td>seo</td><td><code>canonical</code></td><td>medium</td><td>Canonical link</td></tr><tr><td>seo</td><td><code>indexable</code></td><td>high</td><td>Page is indexable</td></tr><tr><td>seo</td><td><code>lang</code></td><td>low</td><td>html lang attribute</td></tr><tr><td>seo</td><td><code>h2</code></td><td>low</td><td>Has H2 subheadings</td></tr><tr><td>seo</td><td><code>img_alt</code></td><td>medium</td><td>Images have alt attributes</td></tr><tr><td>seo</td><td><code>content</code></td><td>medium</td><td>At least 300 words of content</td></tr><tr><td>seo</td><td><code>open_graph</code></td><td>low</td><td>Open Graph title + image</td></tr><tr><td>performance</td><td><code>status</code></td><td>high</td><td>Responds 200 OK</td></tr><tr><td>performance</td><td><code>ttfb</code></td><td>medium</td><td>TTFB under 800 ms</td></tr><tr><td>performance</td><td><code>viewport</code></td><td>high</td><td>Mobile viewport meta</td></tr><tr><td>performance</td><td><code>compression</code></td><td>medium</td><td>Compressed response (gzip/br)</td></tr><tr><td>performance</td><td><code>html_size</code></td><td>low</td><td>HTML under 500 KB</td></tr><tr><td>security</td><td><code>https</code></td><td>high</td><td>Served over HTTPS</td></tr><tr><td>security</td><td><code>tls_valid</code></td><td>high</td><td>Valid TLS certificate</td></tr><tr><td>security</td><td><code>http_redirect</code></td><td>medium</td><td>HTTP redirects to HTTPS</td></tr><tr><td>security</td><td><code>hsts</code></td><td>medium</td><td>HSTS header</td></tr><tr><td>security</td><td><code>nosniff</code></td><td>low</td><td>X-Content-Type-Options</td></tr><tr><td>security</td><td><code>framing</code></td><td>low</td><td>Clickjacking protection</td></tr><tr><td>crawlability</td><td><code>robots_txt</code></td><td>medium</td><td>robots.txt exists</td></tr><tr><td>crawlability</td><td><code>robots_open</code></td><td>high</td><td>robots.txt does not block everything</td></tr><tr><td>crawlability</td><td><code>sitemap</code></td><td>medium</td><td>XML sitemap found</td></tr>
+</table></div>
+
+<h2 id="cli">CLI</h2>
+<pre><code>curl -fsSL https://seoloop.in/install | sh
+
+seoloop audit example.com
+seoloop audit example.com --only seo --format md
+seoloop audit example.com --min 80          # exit code 3 below 80
+seoloop audit example.com --diff            # what changed since last run
+seoloop compare a.com b.com
+seoloop ssl example.com --field days_left
+seoloop indexable example.com --json</code></pre>
+<p>Exit codes: <code>0</code> success, <code>1</code> error, <code>2</code> bad usage, <code>3</code> audit score below <code>--min</code>, <code>4</code> rate limited. <code>--diff</code> keeps its state in <code>~/.cache/seoloop</code>. Set <code>SEOLOOP_URL</code> to use your own server.</p>
+
+<h2 id="action">GitHub Action</h2>
+<pre><code>- uses: mehranshahmiri/seoloop@v1
+  with:
+    url: https://staging.example.com
+    min-score: 80
+    skip: sitemap          # optional
+    only: seo,security     # optional</code></pre>
+<p>Outputs <code>score</code> and <code>grade</code>, writes the Markdown report to the job summary, and fails the job below <code>min-score</code>. The target must be publicly reachable from the internet, so use a deployed preview or staging URL.</p>
+
+<h2 id="mcp">MCP server</h2>
+<p>A remote MCP server (Streamable HTTP, stateless, JSON responses) exposes every endpoint as a tool, so AI agents can run the checks themselves.</p>
+<pre><code>claude mcp add --transport http seoloop https://seoloop.in/mcp</code></pre>
+<p>Most other MCP clients that support remote servers take a URL: <code>https://seoloop.in/mcp</code>. Tools: <code>audit</code>, <code>compare</code>, <code>indexable</code>, <code>links</code>, <code>schema</code>, <code>status</code>, <code>title</code>, <code>meta</code>, <code>headers</code>, <code>redirects</code>, <code>ttfb</code>, <code>ssl</code>, <code>robots</code>, <code>sitemap</code>. All are read-only. Results include both text and structured content.</p>
+
+<h2 id="limits">Limits &amp; errors</h2>
+<ul>
+<li>Rate limits are per IP: 30 requests a minute in general, 6 a minute for <code>/audit</code> and <code>/compare</code>, 20 a minute for <code>/mcp</code>. Over the limit you get HTTP 429.</li>
+<li>Results are cached for 5 minutes (10 for audits), so repeating a request is fast. Look for <code>X-Cache: HIT</code>.</li>
+<li>Each request has a 25 second budget, at most 6 redirects, and a 1.5 MB response cap.</li>
+</ul>
+<div class="tw"><table>
+<tr><th>Status</th><th>Meaning</th></tr>
+<tr><td>400</td><td>Missing or unusable parameter (for example <code>/compare</code> without <code>?vs=</code>).</td></tr>
+<tr><td>412</td><td>Audit score below <code>?min=</code>.</td></tr>
+<tr><td>422</td><td>Target refused: invalid, non-public, or a disallowed port or scheme.</td></tr>
+<tr><td>429</td><td>Rate limited.</td></tr>
+<tr><td>502 / 504</td><td>The target could not be reached, or timed out.</td></tr>
+</table></div>
+<p>Errors are plain text (<code>error: ...</code>) or <code>{"error": "...", "status": 422}</code> as JSON.</p>
+
+<h2 id="selfhost">Self-hosting</h2>
+<p>PHP 8.2+ with curl, dom, openssl, mbstring and intl, plus nginx and PHP-FPM. The repository includes example configs for nginx, a dedicated PHP-FPM pool and rate limits, and a Dockerfile.</p>
+<pre><code>git clone https://github.com/mehranshahmiri/seoloop
+php -S 127.0.0.1:8099 -t public public/index.php    # try it locally</code></pre>
+<p>Environment: <code>SEOLOOP_BASE_URL</code> (public URL), <code>SEOLOOP_CACHE_DIR</code>. Full steps are in the <a href="https://github.com/mehranshahmiri/seoloop#self-host" style="color:var(--brand)">README</a>.</p>
+
+<h2 id="security">Security model</h2>
+<p>The service fetches URLs that strangers type in, so all outbound requests go through one hardened function: public IPs only (every address a name resolves to is checked), the validated IP is pinned into the connection, redirects are followed manually and re-validated at every hop, ports are limited to 80 and 443, and size, time and redirect counts are capped. Found a problem? See <a href="https://github.com/mehranshahmiri/seoloop/security/policy" style="color:var(--brand)">the security policy</a>.</p>
+</main></div></div>
+<footer><div class="wrap">
+  <span>&copy; SEO Loop &mdash; a free product by <a href="https://openloop.in">OpenLoop</a></span>
+  <span><a href="/docs">Docs</a> &middot; <a href="https://github.com/mehranshahmiri/seoloop/issues">Issues</a> &middot; <a href="https://github.com/mehranshahmiri/seoloop">Source</a> &middot; <a href="https://mehranshahmiri.com">Mehran Shahmiri</a></span>
+</div></footer>
+</body>
+</html>

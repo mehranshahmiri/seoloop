@@ -33,7 +33,7 @@ Arguments: category (`seo`, `performance`, `security`, `crawlability`), a stable
 
 1. Write a static method on `SeoLoop\Handlers` that returns `['text' => string, 'data' => array]`.
 2. Add it to `Handlers::ENDPOINTS` with a one-line description.
-3. Add it to the table in `README.md` and `README.txt`.
+3. Add it to the table in `README.md`, `README.txt` and `public/docs.html`. It is exposed over MCP automatically.
 
 ## Pull requests
 

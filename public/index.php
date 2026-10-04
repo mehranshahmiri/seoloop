@@ -5,6 +5,8 @@ require __DIR__ . '/../src/Fetcher.php';
 require __DIR__ . '/../src/Page.php';
 require __DIR__ . '/../src/Handlers.php';
 require __DIR__ . '/../src/Audit.php';
+require __DIR__ . '/../src/Runner.php';
+require __DIR__ . '/../src/Mcp.php';
 
 use SeoLoop\FetchError;
 use SeoLoop\Fetcher;
@@ -12,7 +14,8 @@ use SeoLoop\Handlers;
 
 define('CACHE_DIR', getenv('SEOLOOP_CACHE_DIR') ?: '/var/cache/seoloop-api');
 define('BASE_URL', rtrim(getenv('SEOLOOP_BASE_URL') ?: 'https://seoloop.in', '/'));
-const RESERVED = ['json', 'field', 'min', 'color', 'format', 'only', 'skip'];
+const RESERVED = ['json', 'field', 'min', 'color', 'format', 'only', 'skip', 'vs'];
+SeoLoop\Runner::$dir = CACHE_DIR;
 
 Fetcher::$deadline = microtime(true) + 25;
 
@@ -79,6 +82,36 @@ if ($endpoint === '' && $target === '') {
     $help = file_get_contents(__DIR__ . '/../README.txt') ?: 'SEO Loop';
     respond(200, trim($help), ['name' => 'SEO Loop', 'endpoints' => Handlers::ENDPOINTS, 'docs' => 'https://github.com/mehranshahmiri/seoloop'], $wantsJson);
 }
+if ($endpoint === 'mcp') {
+    header('Access-Control-Allow-Origin: *');
+    header('Access-Control-Allow-Methods: POST, OPTIONS');
+    header('Access-Control-Allow-Headers: Content-Type, Accept, Mcp-Session-Id, MCP-Protocol-Version');
+    $m = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($m === 'OPTIONS') {
+        http_response_code(204);
+        exit;
+    }
+    if ($m !== 'POST') {
+        header('Allow: POST, OPTIONS');
+        fail(405, 'MCP endpoint: POST JSON-RPC here. See https://github.com/mehranshahmiri/seoloop#mcp-server', true);
+    }
+    $raw = file_get_contents('php://input', false, null, 0, 65536);
+    $msg = json_decode((string) $raw, true);
+    header('Content-Type: application/json; charset=utf-8');
+    if ($msg === null) {
+        http_response_code(400);
+        echo json_encode(['jsonrpc' => '2.0', 'id' => null, 'error' => ['code' => -32700, 'message' => 'Parse error']]), "\n";
+        exit;
+    }
+    $batch = is_array($msg) && array_is_list($msg) && $msg !== [];
+    $responses = array_values(array_filter(array_map(fn($x) => SeoLoop\Mcp::handle($x), $batch ? array_slice($msg, 0, 10) : [$msg])));
+    if (!$responses) {
+        http_response_code(202);
+        exit;
+    }
+    echo json_encode($batch ? $responses : $responses[0], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), "\n";
+    exit;
+}
 if ($endpoint === 'up') {
     respond(200, 'ok', ['status' => 'ok'], $wantsJson);
 }
@@ -97,14 +130,18 @@ if ($endpoint === 'robots.txt') {
 }
 if ($endpoint === 'sitemap.xml') {
     header('Content-Type: application/xml; charset=utf-8');
-    echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>' . BASE_URL . '/</loc></url></urlset>' . "\n";
+    echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>' . BASE_URL . '/</loc></url><url><loc>' . BASE_URL . '/docs</loc></url></urlset>' . "\n";
     exit;
 }
-$assets = ['og.png' => 'og.png', 'logo.png' => 'logo.png', 'favicon.png' => 'favicon.png'];
+$assets = [
+    'og.png' => ['og.png', 'image/png', 86400], 'logo.png' => ['logo.png', 'image/png', 86400], 'favicon.png' => ['favicon.png', 'image/png', 86400],
+    'site.css' => ['site.css', 'text/css; charset=utf-8', 300], 'docs' => ['docs.html', 'text/html; charset=utf-8', 300],
+];
 if (isset($assets[$endpoint]) && $target === '') {
-    header('Content-Type: image/png');
-    header('Cache-Control: public, max-age=86400');
-    readfile(__DIR__ . '/' . $assets[$endpoint]);
+    [$file, $type, $ttl] = $assets[$endpoint];
+    header("Content-Type: $type");
+    header("Cache-Control: public, max-age=$ttl");
+    readfile(__DIR__ . '/' . $file);
     exit;
 }
 if ($endpoint === 'openapi.json') {
@@ -112,18 +149,25 @@ if ($endpoint === 'openapi.json') {
     foreach (Handlers::ENDPOINTS as $name => $desc) {
         $paths["/v1/{$name}/{target}"] = ['get' => [
             'summary' => $desc, 'operationId' => $name,
-            'parameters' => array_merge([
-                ['name' => 'target', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'Domain or URL, e.g. example.com'],
-                ['name' => 'field', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Return only this top-level scalar field'],
-            ], $name === 'audit' ? [
-                ['name' => 'min', 'in' => 'query', 'schema' => ['type' => 'integer'], 'description' => 'Respond 412 if the score is below this'],
-                ['name' => 'only', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Comma-separated categories or check ids to include'],
-                ['name' => 'skip', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Comma-separated categories or check ids to exclude'],
-            ] : []),
+            'parameters' => array_merge(
+                [
+                    ['name' => 'target', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'Domain or URL, e.g. example.com'],
+                    ['name' => 'field', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Return only this top-level scalar field'],
+                ],
+                $name === 'audit' ? [
+                    ['name' => 'min', 'in' => 'query', 'schema' => ['type' => 'integer'], 'description' => 'Respond 412 if the score is below this'],
+                    ['name' => 'only', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Comma-separated categories or check ids to include'],
+                    ['name' => 'skip', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Comma-separated categories or check ids to exclude'],
+                    ['name' => 'format', 'in' => 'query', 'schema' => ['type' => 'string', 'enum' => ['text', 'csv', 'md']]],
+                ] : [],
+                $name === 'compare' ? [
+                    ['name' => 'vs', 'in' => 'query', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'Second domain or URL'],
+                ] : []
+            ),
             'responses' => ['200' => ['description' => 'JSON result'], '422' => ['description' => 'Invalid or blocked target'], '429' => ['description' => 'Rate limited'], '502' => ['description' => 'Target unreachable']],
         ]];
     }
-    $spec = ['openapi' => '3.0.3', 'info' => ['title' => 'SEO Loop', 'version' => '1.1.0', 'description' => 'SEO checks over HTTP. Free, no API key. https://github.com/mehranshahmiri/seoloop', 'license' => ['name' => 'MIT']], 'servers' => [['url' => BASE_URL]], 'paths' => $paths];
+    $spec = ['openapi' => '3.0.3', 'info' => ['title' => 'SEO Loop', 'version' => Handlers::VERSION, 'description' => 'SEO checks over HTTP. Free, no API key. https://github.com/mehranshahmiri/seoloop', 'license' => ['name' => 'MIT']], 'servers' => [['url' => BASE_URL]], 'paths' => $paths];
     header('Content-Type: application/json; charset=utf-8');
     header('Access-Control-Allow-Origin: *');
     echo json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
@@ -165,27 +209,8 @@ if ($extraQuery) {
 }
 
 try {
-    $key = hash('sha256', $endpoint . '|' . Fetcher::normalize($target));
-    $cacheFile = CACHE_DIR . "/$key.json";
-    $ttl = $endpoint === 'audit' ? 600 : 300;
-    $result = null;
-    if (is_file($cacheFile) && filemtime($cacheFile) > time() - $ttl) {
-        $result = json_decode((string) file_get_contents($cacheFile), true);
-    }
-    $cached = $result !== null;
-    if (!$cached) {
-        $result = Handlers::$endpoint($target);
-        if (is_dir(CACHE_DIR) && is_writable(CACHE_DIR)) {
-            file_put_contents($cacheFile, json_encode($result), LOCK_EX);
-            if (random_int(1, 100) === 1) {
-                foreach (glob(CACHE_DIR . '/*.json') ?: [] as $f) {
-                    if (filemtime($f) < time() - 3600) {
-                        @unlink($f);
-                    }
-                }
-            }
-        }
-    }
+    $result = SeoLoop\Runner::run($endpoint, $target, isset($_GET['vs']) ? (string) $_GET['vs'] : null);
+    $cached = $result['cached'];
 } catch (FetchError $e) {
     fail($e->getCode(), $e->getMessage(), $wantsJson);
 }
