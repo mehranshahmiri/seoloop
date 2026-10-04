@@ -1,0 +1,26 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: ['8.2', '8.3', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, dom, mbstring, intl, openssl
+      - name: Lint
+        run: |
+          for f in src/*.php public/index.php tests/*.php; do php -l "$f"; done
+          sh -n bin/seoloop
+          sh -n install.sh
+      - name: Unit tests
+        run: php tests/unit.php
+      - name: SSRF tests (must-refuse list)
+        run: php tests/ssrf.php

@@ -64,6 +64,38 @@ final class Page
         return $r ? trim($r->getAttribute('lang')) : '';
     }
 
+    /** @return string[] raw href values of all <a> elements */
+    public function links(): array
+    {
+        $out = [];
+        foreach ($this->dom->getElementsByTagName('a') as $a) {
+            $h = trim($a->getAttribute('href'));
+            if ($h !== '') {
+                $out[] = $h;
+            }
+        }
+        return $out;
+    }
+
+    /** @return array{0:array[],1:int} decoded JSON-LD blocks and the number that failed to parse */
+    public function jsonLd(): array
+    {
+        $blocks = [];
+        $bad = 0;
+        foreach ($this->dom->getElementsByTagName('script') as $sc) {
+            if (strtolower(trim($sc->getAttribute('type'))) !== 'application/ld+json') {
+                continue;
+            }
+            $j = json_decode($sc->textContent, true);
+            if (is_array($j)) {
+                $blocks[] = $j;
+            } else {
+                $bad++;
+            }
+        }
+        return [$blocks, $bad];
+    }
+
     public function imagesMissingAlt(): int
     {
         $n = 0;
@@ -81,6 +113,11 @@ final class Page
         foreach (iterator_to_array($xp->query('//script|//style|//noscript')) as $node) {
             $node->parentNode?->removeChild($node);
         }
-        return (int) preg_match_all('/\p{L}[\p{L}\p{N}\'’-]*/u', $this->dom->textContent ?? '');
+        // Join text nodes with spaces: textContent would glue "<h1>One</h1><p>two</p>" into "Onetwo".
+        $text = [];
+        foreach ($xp->query('//body//text()') as $t) {
+            $text[] = $t->nodeValue;
+        }
+        return (int) preg_match_all('/\p{L}[\p{L}\p{N}\'’-]*/u', implode(' ', $text));
     }
 }

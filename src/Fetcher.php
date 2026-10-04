@@ -166,7 +166,7 @@ final class Fetcher
     }
 
     /**
-     * @param array{method?:string,follow?:bool,max_bytes?:int} $o
+     * @param array{method?:string,follow?:bool,max_bytes?:int,timeout?:int} $o
      * @return array<string,mixed>
      */
     public static function request(string $url, array $o = []): array
@@ -209,7 +209,7 @@ final class Fetcher
                     CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
                     CURLOPT_FOLLOWLOCATION => false,
                     CURLOPT_NOBODY => $method === 'HEAD',
-                    CURLOPT_TIMEOUT_MS => (int) (min(self::TIMEOUT, $remaining) * 1000),
+                    CURLOPT_TIMEOUT_MS => (int) (min($o['timeout'] ?? self::TIMEOUT, $remaining) * 1000),
                     CURLOPT_CONNECTTIMEOUT => 5,
                     CURLOPT_USERAGENT => 'Mozilla/5.0 (compatible; SEOLoopBot/1.0; +https://seoloop.in)',
                     CURLOPT_ENCODING => '',

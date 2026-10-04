@@ -77,6 +77,9 @@ $ seoloop audit example.com --min 80 || echo "SEO score too low"
 | Endpoint | Returns |
 |---|---|
 | `/audit/<target>` | 26 checks in 4 categories, a 0-100 score and a grade |
+| `/indexable/<target>` | can search engines index this URL? yes/no with reasons (noindex, robots.txt, canonical, status) |
+| `/links/<target>` | broken-link check for the first 30 links on a page |
+| `/schema/<target>` | JSON-LD types found and missing required properties |
 | `/status/<target>` | HTTP status after redirects |
 | `/title/<target>` | page title |
 | `/meta/<target>` | title, description, canonical, robots, Open Graph, headings, word count |
@@ -97,11 +100,33 @@ $ seoloop audit example.com --min 80 || echo "SEO score too low"
 | JSON | `?json`, header `Accept: application/json`, or `/v1/<endpoint>/<target>` |
 | One value | `?field=days_left` (any top-level scalar in the JSON) |
 | CI gate | `?min=80` on `/audit` answers HTTP 412 below 80. `seoloop audit x.com --min 80` exits 3 |
+| Filter | `?only=seo,security` or `?skip=sitemap,hsts` on `/audit` (category names or check ids); the score is recomputed |
+| Format | `?format=csv` or `?format=md` on `/audit` (markdown is made for PR comments) |
 | Colour | `?color` on `/audit` (the CLI does this automatically on a TTY) |
 
 Rate limits are enforced per IP by nginx (see `deploy/nginx-limits.conf`). Results are cached for 5 to 10 minutes.
 
+### API docs
+
+[`/openapi.json`](https://seoloop.in/openapi.json) is an OpenAPI 3 spec, and [`/llms.txt`](https://seoloop.in/llms.txt) describes the API for AI agents.
+
+## GitHub Action
+
+Fail a pull request when the SEO score of a preview or staging URL drops, and get the report in the job summary:
+
+```yaml
+- uses: mehranshahmiri/seoloop@v1
+  with:
+    url: https://staging.example.com
+    min-score: 80
+    # skip: sitemap,hsts      # optional
+    # only: seo,security      # optional
+```
+
+Outputs: `score` and `grade`. The Markdown report is written to the job summary.
+
 ## Self-host
+
 
 Needs PHP 8.2+ with `curl`, `dom`, `openssl`, `mbstring`, `intl`; nginx; PHP-FPM.
 
@@ -117,6 +142,12 @@ sudo nginx -t && sudo systemctl reload nginx php8.x-fpm
 
 Point the CLI at your own instance with `SEOLOOP_URL=https://seo.example.com seoloop audit example.com`.
 
+**Docker** (single container, built-in PHP server; put nginx or Caddy in front for TLS and rate limits):
+
+```sh
+docker compose up -d      # http://localhost:8080
+```
+
 For quick local hacking: `php -S 127.0.0.1:8099 -t public public/index.php`.
 
 ## Security model
@@ -129,7 +160,7 @@ This service fetches URLs that strangers type in, so `src/Fetcher.php` is the on
 - redirects are followed manually, and every hop is re-validated
 - response size, time and redirect count are capped; a global 25 s deadline covers a whole request
 
-Run `php tests/ssrf.php` after changing anything near the fetcher. Found a hole? See [SECURITY.md](SECURITY.md).
+Run `php tests/ssrf.php` after changing anything near the fetcher (CI runs it with `php tests/unit.php` on every push). Found a hole? See [SECURITY.md](SECURITY.md).
 
 ## Add a check
 
@@ -154,6 +185,9 @@ bin/seoloop         the CLI
 install.sh          CLI installer
 deploy/             nginx + php-fpm examples
 tests/ssrf.php      must-refuse target list
+tests/unit.php      offline unit tests
+action.yml          GitHub Action
+Dockerfile          container image
 ```
 
 

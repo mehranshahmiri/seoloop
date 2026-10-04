@@ -10,8 +10,9 @@ use SeoLoop\FetchError;
 use SeoLoop\Fetcher;
 use SeoLoop\Handlers;
 
-const CACHE_DIR = '/var/cache/seoloop-api';
-const RESERVED = ['json', 'field', 'min', 'color', 'format'];
+define('CACHE_DIR', getenv('SEOLOOP_CACHE_DIR') ?: '/var/cache/seoloop-api');
+define('BASE_URL', rtrim(getenv('SEOLOOP_BASE_URL') ?: 'https://seoloop.in', '/'));
+const RESERVED = ['json', 'field', 'min', 'color', 'format', 'only', 'skip'];
 
 Fetcher::$deadline = microtime(true) + 25;
 
@@ -22,6 +23,10 @@ function respond(int $code, string $text, array $data, bool $json, array $extra 
     header('X-Content-Type-Options: nosniff');
     foreach ($extra as $k => $v) {
         header("$k: $v");
+    }
+    if (isset($extra['Content-Type']) && !$json) {
+        echo $text, "\n";
+        exit;
     }
     if ($json) {
         header('Content-Type: application/json; charset=utf-8');
@@ -87,12 +92,12 @@ if ($endpoint === 'ua') {
 }
 if ($endpoint === 'robots.txt') {
     header('Content-Type: text/plain');
-    echo "User-agent: *\nAllow: /\n\nSitemap: https://seoloop.in/sitemap.xml\n";
+    echo "User-agent: *\nAllow: /\n\nSitemap: " . BASE_URL . "/sitemap.xml\n";
     exit;
 }
 if ($endpoint === 'sitemap.xml') {
     header('Content-Type: application/xml; charset=utf-8');
-    echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://seoloop.in/</loc></url></urlset>' . "\n";
+    echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>' . BASE_URL . '/</loc></url></urlset>' . "\n";
     exit;
 }
 $assets = ['og.png' => 'og.png', 'logo.png' => 'logo.png', 'favicon.png' => 'favicon.png'];
@@ -100,6 +105,37 @@ if (isset($assets[$endpoint]) && $target === '') {
     header('Content-Type: image/png');
     header('Cache-Control: public, max-age=86400');
     readfile(__DIR__ . '/' . $assets[$endpoint]);
+    exit;
+}
+if ($endpoint === 'openapi.json') {
+    $paths = [];
+    foreach (Handlers::ENDPOINTS as $name => $desc) {
+        $paths["/v1/{$name}/{target}"] = ['get' => [
+            'summary' => $desc, 'operationId' => $name,
+            'parameters' => array_merge([
+                ['name' => 'target', 'in' => 'path', 'required' => true, 'schema' => ['type' => 'string'], 'description' => 'Domain or URL, e.g. example.com'],
+                ['name' => 'field', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Return only this top-level scalar field'],
+            ], $name === 'audit' ? [
+                ['name' => 'min', 'in' => 'query', 'schema' => ['type' => 'integer'], 'description' => 'Respond 412 if the score is below this'],
+                ['name' => 'only', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Comma-separated categories or check ids to include'],
+                ['name' => 'skip', 'in' => 'query', 'schema' => ['type' => 'string'], 'description' => 'Comma-separated categories or check ids to exclude'],
+            ] : []),
+            'responses' => ['200' => ['description' => 'JSON result'], '422' => ['description' => 'Invalid or blocked target'], '429' => ['description' => 'Rate limited'], '502' => ['description' => 'Target unreachable']],
+        ]];
+    }
+    $spec = ['openapi' => '3.0.3', 'info' => ['title' => 'SEO Loop', 'version' => '1.1.0', 'description' => 'SEO checks over HTTP. Free, no API key. https://github.com/mehranshahmiri/seoloop', 'license' => ['name' => 'MIT']], 'servers' => [['url' => BASE_URL]], 'paths' => $paths];
+    header('Content-Type: application/json; charset=utf-8');
+    header('Access-Control-Allow-Origin: *');
+    echo json_encode($spec, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), "\n";
+    exit;
+}
+if ($endpoint === 'llms.txt') {
+    header('Content-Type: text/plain; charset=utf-8');
+    $lines = ['# SEO Loop', '', '> Free SEO checks over plain HTTP. No signup, no API key. Open source (MIT): https://github.com/mehranshahmiri/seoloop', '', 'Base URL: ' . BASE_URL, 'Add ?json (or use /v1/...) for JSON. OpenAPI: ' . BASE_URL . '/openapi.json', '', '## Endpoints', ''];
+    foreach (Handlers::ENDPOINTS as $name => $desc) {
+        $lines[] = "- {$name}: {$desc}. GET " . BASE_URL . "/{$name}/example.com";
+    }
+    echo implode("\n", $lines), "\n";
     exit;
 }
 if ($endpoint === 'install') {
@@ -159,6 +195,19 @@ $data = $result['data'];
 $headers = ['Cache-Control' => 'public, max-age=60', 'X-Cache' => $cached ? 'HIT' : 'MISS'];
 
 if ($endpoint === 'audit') {
+    $fmt = strtolower((string) ($_GET['format'] ?? 'text'));
+    $csv = fn($k) => array_values(array_filter(array_map('trim', explode(',', strtolower((string) ($_GET[$k] ?? ''))))));
+    $opts = ['only' => $csv('only'), 'skip' => $csv('skip'), 'format' => $fmt];
+    if ($opts['only'] || $opts['skip'] || in_array($fmt, ['csv', 'md', 'markdown'], true)) {
+        $result = SeoLoop\Audit::present(['url' => $data['url'], 'checks' => $data['checks']], $opts);
+        $text = $result['text'];
+        $data = $result['data'];
+    }
+    if ($fmt === 'csv') {
+        $headers['Content-Type'] = 'text/csv; charset=utf-8';
+    } elseif (in_array($fmt, ['md', 'markdown'], true)) {
+        $headers['Content-Type'] = 'text/markdown; charset=utf-8';
+    }
     $headers['X-SeoLoop-Score'] = (string) $data['score'];
     if (isset($_GET['color']) && !$wantsJson) {
         $text = colorize($text);

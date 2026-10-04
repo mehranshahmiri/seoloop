@@ -85,31 +85,7 @@ final class Audit
         $this->add('crawlability', 'robots_open', 'high', 'robots.txt does not block everything', !($robots['blocks_all'] ?? false), 'User-agent: * / Disallow: /');
         $this->add('crawlability', 'sitemap', 'medium', 'XML sitemap found', (bool) ($sitemap['found'] ?? false), '');
 
-        $earned = $total = 0;
-        $cats = [];
-        foreach ($this->checks as $c) {
-            $w = self::WEIGHT[$c['importance']];
-            $total += $w;
-            $earned += $c['passed'] ? $w : 0;
-            $cats[$c['category']]['w'] = ($cats[$c['category']]['w'] ?? 0) + $w;
-            $cats[$c['category']]['e'] = ($cats[$c['category']]['e'] ?? 0) + ($c['passed'] ? $w : 0);
-        }
-        $score = (int) round(100 * $earned / max(1, $total));
-        $catScores = array_map(fn($c) => (int) round(100 * $c['e'] / $c['w']), $cats);
-        $passed = count(array_filter($this->checks, fn($c) => $c['passed']));
-
-        return [
-            'text' => $this->render($r['final_url'], $score, $catScores, $passed),
-            'data' => [
-                'url' => $r['final_url'],
-                'score' => $score,
-                'grade' => self::grade($score),
-                'categories' => $catScores,
-                'passed' => $passed,
-                'failed' => count($this->checks) - $passed,
-                'checks' => $this->checks,
-            ],
-        ];
+        return self::present(['url' => $r['final_url'], 'checks' => $this->checks]);
     }
 
     private function httpRedirects(string $host): bool
@@ -133,13 +109,54 @@ final class Audit
         };
     }
 
-    private function render(string $url, int $score, array $cats, int $passed): string
+    /**
+     * Turn raw checks into the final result, optionally narrowed to categories/check ids.
+     * Cached results hold every check, so ?only= / ?skip= / ?format= are applied here, after the cache.
+     *
+     * @param array{url:string,checks:array} $raw
+     * @param array{only?:string[],skip?:string[],format?:string} $o
+     * @return array{text:string,data:array}
+     */
+    public static function present(array $raw, array $o = []): array
     {
-        $out = ["SEO Loop audit  {$url}", '', sprintf('Score: %d/100  (%s)    %d passed, %d failed', $score, self::grade($score), $passed, count($this->checks) - $passed), ''];
-        $out[] = 'Categories: ' . implode('   ', array_map(fn($k, $v) => "{$k} {$v}", array_keys($cats), $cats));
+        $checks = $raw['checks'];
+        if (!empty($o['only'])) {
+            $checks = array_values(array_filter($checks, fn($c) => in_array($c['category'], $o['only'], true) || in_array($c['id'], $o['only'], true)));
+        }
+        if (!empty($o['skip'])) {
+            $checks = array_values(array_filter($checks, fn($c) => !in_array($c['category'], $o['skip'], true) && !in_array($c['id'], $o['skip'], true)));
+        }
+        $earned = $total = 0;
+        $cats = [];
+        foreach ($checks as $c) {
+            $w = self::WEIGHT[$c['importance']];
+            $total += $w;
+            $earned += $c['passed'] ? $w : 0;
+            $cats[$c['category']]['w'] = ($cats[$c['category']]['w'] ?? 0) + $w;
+            $cats[$c['category']]['e'] = ($cats[$c['category']]['e'] ?? 0) + ($c['passed'] ? $w : 0);
+        }
+        $score = (int) round(100 * $earned / max(1, $total));
+        $catScores = array_map(fn($c) => (int) round(100 * $c['e'] / $c['w']), $cats);
+        $passed = count(array_filter($checks, fn($c) => $c['passed']));
+        $data = [
+            'url' => $raw['url'], 'score' => $score, 'grade' => self::grade($score), 'categories' => $catScores,
+            'passed' => $passed, 'failed' => count($checks) - $passed, 'checks' => $checks,
+        ];
+        $text = match ($o['format'] ?? 'text') {
+            'csv' => self::renderCsv($checks),
+            'md', 'markdown' => self::renderMarkdown($data),
+            default => self::renderText($data),
+        };
+        return ['text' => $text, 'data' => $data];
+    }
+
+    private static function renderText(array $d): string
+    {
+        $out = ["SEO Loop audit  {$d['url']}", '', sprintf('Score: %d/100  (%s)    %d passed, %d failed', $d['score'], $d['grade'], $d['passed'], $d['failed']), ''];
+        $out[] = 'Categories: ' . implode('   ', array_map(fn($k, $v) => "{$k} {$v}", array_keys($d['categories']), $d['categories']));
         $out[] = '';
         $last = '';
-        foreach ($this->checks as $c) {
+        foreach ($d['checks'] as $c) {
             if ($c['category'] !== $last) {
                 $last = $c['category'];
                 $out[] = strtoupper($last);
@@ -149,6 +166,40 @@ final class Audit
                 $line .= " - {$c['detail']}";
             }
             $out[] = $line;
+        }
+        return implode("\n", $out);
+    }
+
+    private static function renderCsv(array $checks): string
+    {
+        $fh = fopen('php://memory', 'w+');
+        fputcsv($fh, ['category', 'id', 'importance', 'passed', 'label', 'detail'], ',', '"', '');
+        foreach ($checks as $c) {
+            fputcsv($fh, [$c['category'], $c['id'], $c['importance'], $c['passed'] ? 'true' : 'false', $c['label'], $c['detail']], ',', '"', '');
+        }
+        rewind($fh);
+        return rtrim((string) stream_get_contents($fh));
+    }
+
+    /** Markdown suited to a PR comment or GitHub step summary. */
+    private static function renderMarkdown(array $d): string
+    {
+        $out = ["## SEO Loop audit: {$d['score']}/100 ({$d['grade']})", '', "`{$d['url']}` - {$d['passed']} passed, {$d['failed']} failed", ''];
+        $out[] = '| Category | Score |';
+        $out[] = '|---|---|';
+        foreach ($d['categories'] as $k => $v) {
+            $out[] = "| {$k} | {$v} |";
+        }
+        $failed = array_filter($d['checks'], fn($c) => !$c['passed']);
+        if ($failed) {
+            $out[] = '';
+            $out[] = '### Failing checks';
+            $out[] = '';
+            $out[] = '| Importance | Check | Detail |';
+            $out[] = '|---|---|---|';
+            foreach ($failed as $c) {
+                $out[] = "| {$c['importance']} | {$c['label']} | " . str_replace('|', '\\|', $c['detail']) . ' |';
+            }
         }
         return implode("\n", $out);
     }

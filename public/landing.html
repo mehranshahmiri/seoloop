@@ -18,6 +18,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"SoftwareApplication","name":"SEO Loop","applicationCategory":"DeveloperApplication","operatingSystem":"Any","url":"https://seoloop.in/","description":"Free, open-source SEO audits from the command line.","license":"https://opensource.org/licenses/MIT","offers":{"@type":"Offer","price":"0","priceCurrency":"USD"},"author":{"@type":"Organization","name":"OpenLoop","url":"https://openloop.in"}}</script>
 <style>
 :root{--bg:#fff;--fg:#1E1E1E;--muted:#6b7280;--line:#E5E5EA;--soft:#F5F5F7;--brand:#730094;--brand-d:#55006e}
 *{box-sizing:border-box;margin:0;-webkit-font-smoothing:antialiased}
@@ -107,6 +108,9 @@ SECURITY
   <div class="center"><h2>Everything is one URL</h2><p class="sub">Every endpoint is <code>/&lt;check&gt;/&lt;domain&gt;</code>. Short answers by default, full detail as JSON.</p></div>
   <div class="grid">
     <div class="card"><code>/audit/example.com</code><h3>Full audit</h3><p>26 checks across SEO, performance, security and crawlability, rolled into a 0&ndash;100 score and a grade.</p></div>
+    <div class="card"><code>/indexable/example.com</code><h3>Indexable?</h3><p>A straight yes or no, with the reason: noindex, robots.txt, canonical, status.</p></div>
+    <div class="card"><code>/links/example.com</code><h3>Broken links</h3><p>Checks the links on a page and lists the dead ones.</p></div>
+    <div class="card"><code>/schema/example.com</code><h3>Structured data</h3><p>JSON-LD types found, and which required properties are missing.</p></div>
     <div class="card"><code>/status/example.com</code><h3>HTTP status</h3><p>The final status code after following redirects.</p></div>
     <div class="card"><code>/meta/example.com</code><h3>On-page meta</h3><p>Title, description, canonical, robots, Open Graph, headings, word count.</p></div>
     <div class="card"><code>/redirects/example.com</code><h3>Redirect chain</h3><p>Every hop from the URL you typed to the page you land on.</p></div>
@@ -132,7 +136,9 @@ SECURITY
 <section id="ci"><div class="wrap">
   <div class="center"><p class="eyebrow">Built for scripts</p><h2>JSON, single fields, CI gates</h2></div>
   <div class="term"><div class="bar"><b></b><b></b><b></b></div>
-<pre><span class="dim"># machine-readable</span>
+<pre><span class="dim"># markdown report for a pull request</span>
+<span class="pr">$</span> curl 'seoloop.in/audit/example.com?format=md'
+<span class="dim"># machine-readable</span>
 <span class="pr">$</span> curl seoloop.in/v1/ssl/example.com
 <span class="dim"># one value, ready for a script</span>
 <span class="pr">$</span> curl 'seoloop.in/ssl/example.com?field=days_left'
@@ -151,7 +157,7 @@ SECURITY
     <div><b>SSRF-hardened</b><span>Public IPs only, per hop</span></div>
     <div><b>MIT licensed</b><span>Fork it, extend it</span></div>
   </div>
-  <p class="sub" style="margin-top:32px">Add a check in one function. Pull requests welcome.</p>
+  <p class="sub" style="margin-top:32px">Add a check in one line. Includes a <a href="https://github.com/mehranshahmiri/seoloop#github-action" style="color:var(--brand);font-weight:600">GitHub Action</a>, an <a href="/openapi.json" style="color:var(--brand);font-weight:600">OpenAPI spec</a> and a Dockerfile. Pull requests welcome.</p>
 </div></section>
 
 <section><div class="wrap center">

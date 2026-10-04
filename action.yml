@@ -1,0 +1,71 @@
+name: SEO Loop audit
+description: Audit a URL with SEO Loop, write the report to the job summary, and fail below a minimum score.
+author: Mehran Shahmiri
+branding:
+  icon: search
+  color: purple
+inputs:
+  url:
+    description: URL or domain to audit (must be publicly reachable)
+    required: true
+  min-score:
+    description: Fail the job if the score is below this (0 disables)
+    default: '0'
+  only:
+    description: Comma-separated categories or check ids to include
+    default: ''
+  skip:
+    description: Comma-separated categories or check ids to exclude
+    default: ''
+  server:
+    description: SEO Loop server (use your own if self-hosting)
+    default: https://seoloop.in
+outputs:
+  score:
+    description: Audit score, 0-100
+    value: ${{ steps.audit.outputs.score }}
+  grade:
+    description: Letter grade, A-F
+    value: ${{ steps.audit.outputs.grade }}
+runs:
+  using: composite
+  steps:
+    - id: audit
+      shell: bash
+      env:
+        TARGET: ${{ inputs.url }}
+        MIN: ${{ inputs.min-score }}
+        ONLY: ${{ inputs.only }}
+        SKIP: ${{ inputs.skip }}
+        SERVER: ${{ inputs.server }}
+      run: |
+        set -uo pipefail
+        extra=""
+        [ -n "$ONLY" ] && extra="$extra&only=$ONLY"
+        [ -n "$SKIP" ] && extra="$extra&skip=$SKIP"
+        url="${SERVER%/}/audit/$TARGET?format=md$extra"
+        # One request: the Markdown body is the report, the score travels in a response header.
+        # (Audits are rate limited per IP, so we retry once on HTTP 429.)
+        for attempt in 1 2; do
+          code="$(curl -sS --max-time 60 -D headers.txt -o report.md -w '%{http_code}' "$url")" || code=0
+          [ "$code" = 429 ] && [ "$attempt" = 1 ] && { echo "Rate limited, retrying in 30s"; sleep 30; continue; }
+          break
+        done
+        score="$(tr -d '\r' < headers.txt | awk -F': ' 'tolower($1)=="x-seoloop-score"{print $2}' | tail -1)"
+        if [ -z "$score" ]; then
+          echo "::error::SEO Loop audit failed (HTTP $code): $(head -c 300 report.md)"
+          exit 1
+        fi
+        if   [ "$score" -ge 90 ]; then grade=A
+        elif [ "$score" -ge 80 ]; then grade=B
+        elif [ "$score" -ge 70 ]; then grade=C
+        elif [ "$score" -ge 60 ]; then grade=D
+        else grade=F; fi
+        cat report.md >> "$GITHUB_STEP_SUMMARY"
+        echo "score=$score" >> "$GITHUB_OUTPUT"
+        echo "grade=$grade" >> "$GITHUB_OUTPUT"
+        echo "SEO score: $score/100 ($grade)"
+        if [ "$score" -lt "$MIN" ]; then
+          echo "::error::SEO score $score is below the minimum of $MIN"
+          exit 1
+        fi

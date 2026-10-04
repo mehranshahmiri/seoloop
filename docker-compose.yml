@@ -1,0 +1,8 @@
+services:
+  seoloop:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      SEOLOOP_BASE_URL: http://localhost:8080   # change to your public URL
+    restart: unless-stopped
