@@ -1,27 +1,74 @@
-# SEO Loop
+<p align="center">
+  <a href="https://seoloop.in"><img src="public/logo.png" alt="SEO Loop" width="320"></a>
+</p>
 
-SEO checks for your terminal. Free, open source, no signup, no API key.
+<h3 align="center">SEO checks for your terminal.</h3>
+
+<p align="center">
+  Audit any website from the command line. Plain text for humans, JSON for scripts, an exit code for CI.<br>
+  Free, open source, no signup, no API key.
+</p>
+
+<p align="center">
+  <a href="https://seoloop.in"><b>seoloop.in</b></a> &nbsp;·&nbsp;
+  <a href="#install">Install</a> &nbsp;·&nbsp;
+  <a href="#endpoints">Endpoints</a> &nbsp;·&nbsp;
+  <a href="#self-host">Self-host</a> &nbsp;·&nbsp;
+  <a href="CONTRIBUTING.md">Contribute</a>
+</p>
+
+<p align="center">
+  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-730094">
+  <img alt="PHP 8.2+" src="https://img.shields.io/badge/PHP-8.2%2B-730094">
+  <img alt="No database, no framework" src="https://img.shields.io/badge/deps-none-730094">
+  <img alt="PRs welcome" src="https://img.shields.io/badge/PRs-welcome-730094">
+</p>
+
+---
 
 ```console
 $ curl seoloop.in/audit/example.com
 SEO Loop audit  https://example.com/
 
 Score: 81/100  (B)    20 passed, 6 failed
-...
+Categories: seo 80   performance 90   security 50   crawlability 75
+
+SEO
+  PASS           Title tag present
+  FAIL  [high]   Meta description present - No meta description.
+  ...
 ```
 
-Hosted at **[seoloop.in](https://seoloop.in)**. Plain PHP, no framework, no database.
+## What is it?
 
-## Use it
+SEO Loop is a small HTTP service that answers SEO questions about any public URL in one request, like `ifconfig.me` does for your IP address. It checks the things that decide whether a page can be found and trusted: title and meta tags, headings, canonical and robots rules, redirects, response time, TLS, security headers, `robots.txt` and sitemaps.
+
+- **Terminal first.** Every answer is short plain text by default. No dashboard, no accounts.
+- **Scriptable.** JSON on request, a single field with `?field=`, and an HTTP 412 gate for CI.
+- **Hackable.** Plain PHP, no framework, no database. Adding a check is one line.
+- **Safe to expose.** Built to fetch URLs from strangers: see the [security model](#security-model).
+
+## Install
 
 ```sh
-# no install
+# no install, just curl
 curl seoloop.in/audit/example.com
 
-# or install the CLI (a single shell script that only needs curl)
+# or install the CLI (one shell script, needs only curl)
 curl -fsSL https://seoloop.in/install | sh
 seoloop audit example.com
 ```
+
+The installer puts `seoloop` in `/usr/local/bin`, or `~/.local/bin` if that isn't writable. Read the script first if you like: [`install.sh`](install.sh) and [`bin/seoloop`](bin/seoloop).
+
+```console
+$ seoloop --help
+$ seoloop ssl example.com --field days_left
+$ seoloop audit example.com --json
+$ seoloop audit example.com --min 80 || echo "SEO score too low"
+```
+
+## Endpoints
 
 | Endpoint | Returns |
 |---|---|
@@ -78,7 +125,7 @@ This service fetches URLs that strangers type in, so `src/Fetcher.php` is the on
 - redirects are followed manually, and every hop is re-validated
 - response size, time and redirect count are capped; a global 25 s deadline covers a whole request
 
-Run `php tests/ssrf.php` after changing anything near the fetcher. Found a hole? Please open a private security advisory on GitHub instead of a public issue.
+Run `php tests/ssrf.php` after changing anything near the fetcher. Found a hole? See [SECURITY.md](SECURITY.md).
 
 ## Add a check
 
@@ -105,6 +152,11 @@ deploy/             nginx + php-fpm examples
 tests/ssrf.php      must-refuse target list
 ```
 
+
+## Contributing
+
+Pull requests are very welcome: new checks, new endpoints, fixes, docs. Start with [CONTRIBUTING.md](CONTRIBUTING.md).
+
 ## License
 
-MIT. A free product by [OpenLoop](https://openloop.in).
+[MIT](LICENSE). A free product by [OpenLoop](https://openloop.in), created by [Mehran Shahmiri](https://mehranshahmiri.com).
