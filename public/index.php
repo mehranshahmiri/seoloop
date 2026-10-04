@@ -95,10 +95,11 @@ if ($endpoint === 'sitemap.xml') {
     echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n" . '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://seoloop.in/</loc></url></urlset>' . "\n";
     exit;
 }
-if ($endpoint === 'og.png') {
+$assets = ['og.png' => 'og.png', 'logo.png' => 'logo.png', 'favicon.png' => 'favicon.png'];
+if (isset($assets[$endpoint]) && $target === '') {
     header('Content-Type: image/png');
     header('Cache-Control: public, max-age=86400');
-    readfile(__DIR__ . '/og.png');
+    readfile(__DIR__ . '/' . $assets[$endpoint]);
     exit;
 }
 if ($endpoint === 'install') {
