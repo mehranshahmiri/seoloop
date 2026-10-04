@@ -139,7 +139,7 @@ Fail a pull request when the SEO score of a preview or staging URL drops, and ge
     # only: seo,security      # optional
 ```
 
-Outputs: `score` and `grade`. The Markdown report is written to the job summary. The action lives in its own repo, [mehranshahmiri/seoloop-action](https://github.com/mehranshahmiri/seoloop-action), so it can be listed on the GitHub Marketplace.
+Outputs: `score` and `grade`. The Markdown report is written to the job summary. Listed on the [GitHub Marketplace](https://github.com/marketplace/actions/seo-loop-audit); the source lives in [mehranshahmiri/seoloop-action](https://github.com/mehranshahmiri/seoloop-action).
 
 ## Self-host
 

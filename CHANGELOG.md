@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- Docs link to the Marketplace listing of the Action
+
 ## 1.2.1
 - The GitHub Action moved to its own repo, [mehranshahmiri/seoloop-action](https://github.com/mehranshahmiri/seoloop-action) (for the Marketplace). Use `uses: mehranshahmiri/seoloop-action@v1`. The old `mehranshahmiri/seoloop@v1` path keeps working at the `v1.2.0` tag only.
 - Weekly self-audit workflow that runs the Action against seoloop.in
