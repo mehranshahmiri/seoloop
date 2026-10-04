@@ -1,5 +1,8 @@
 # Changelog
 
+## 1.1.1
+- Fix: `/schema` text output no longer runs long type names into the status
+
 ## 1.1.0
 - New endpoints: `/indexable`, `/links`, `/schema`
 - `/audit`: `?only=` / `?skip=` filters, `?format=csv|md`

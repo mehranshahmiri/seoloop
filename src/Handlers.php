@@ -375,7 +375,7 @@ final class Handlers
         }
         $lines = [count($blocks) . ' JSON-LD block(s), ' . count($items) . ' typed item(s)' . ($bad ? ", {$bad} invalid JSON" : '')];
         foreach ($items as $i) {
-            $lines[] = '  ' . sprintf('%-16s', $i['type']) . ($i['missing'] ? 'missing: ' . implode(', ', $i['missing']) : 'ok');
+            $lines[] = '  ' . sprintf('%-20s', $i['type']) . ($i['missing'] ? 'missing: ' . implode(', ', $i['missing']) : 'ok');
         }
         if ($bad) {
             $lines[] = "  {$bad} block(s) could not be parsed as JSON";
