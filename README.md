@@ -30,12 +30,16 @@
 $ curl seoloop.in/audit/example.com
 SEO Loop audit  https://example.com/
 
-Score: 81/100  (B)    20 passed, 6 failed
-Categories: seo 80   performance 90   security 50   crawlability 75
+Score: 62/100  (D)    13 passed, 13 failed
+
+Categories: seo 48   performance 100   security 59   crawlability 50
 
 SEO
   PASS           Title tag present
+  PASS           Title 10-60 characters
   FAIL  [high]   Meta description present - No meta description.
+  FAIL  [medium] Description 50-160 characters
+  FAIL  [medium] Exactly one H1 - Found 0 H1 tag(s).
   ...
 ```
 
