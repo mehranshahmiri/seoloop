@@ -107,7 +107,7 @@ seoloop indexable example.com --json</code></pre>
 <p>Exit codes: <code>0</code> success, <code>1</code> error, <code>2</code> bad usage, <code>3</code> audit score below <code>--min</code>, <code>4</code> rate limited. <code>--diff</code> keeps its state in <code>~/.cache/seoloop</code>. Set <code>SEOLOOP_URL</code> to use your own server.</p>
 
 <h2 id="action">GitHub Action</h2>
-<pre><code>- uses: mehranshahmiri/seoloop@v1
+<pre><code>- uses: mehranshahmiri/seoloop-action@v1
   with:
     url: https://staging.example.com
     min-score: 80

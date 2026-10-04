@@ -131,7 +131,7 @@ Full reference: **[seoloop.in/docs](https://seoloop.in/docs)**.
 Fail a pull request when the SEO score of a preview or staging URL drops, and get the report in the job summary:
 
 ```yaml
-- uses: mehranshahmiri/seoloop@v1
+- uses: mehranshahmiri/seoloop-action@v1
   with:
     url: https://staging.example.com
     min-score: 80
@@ -139,7 +139,7 @@ Fail a pull request when the SEO score of a preview or staging URL drops, and ge
     # only: seo,security      # optional
 ```
 
-Outputs: `score` and `grade`. The Markdown report is written to the job summary.
+Outputs: `score` and `grade`. The Markdown report is written to the job summary. The action lives in its own repo, [mehranshahmiri/seoloop-action](https://github.com/mehranshahmiri/seoloop-action), so it can be listed on the GitHub Marketplace.
 
 ## Self-host
 
@@ -205,7 +205,7 @@ install.sh          CLI installer
 deploy/             nginx + php-fpm examples
 tests/ssrf.php      must-refuse target list
 tests/unit.php      offline unit tests
-action.yml          GitHub Action
+.github/workflows/  CI + a self-audit of seoloop.in using the Action
 Dockerfile          container image
 ```
 

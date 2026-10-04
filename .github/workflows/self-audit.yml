@@ -1,0 +1,17 @@
+name: Self-audit
+# Runs the published Action against the live site: a real-runner test of the Action,
+# and a tripwire if seoloop.in's own SEO score ever drops.
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: mehranshahmiri/seoloop-action@v1
+        with:
+          url: https://seoloop.in
+          min-score: 95
